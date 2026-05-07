@@ -1,0 +1,6 @@
+services:
+  web:
+    build: .
+    container_name: weblab-fastapi
+    ports:
+      - "4200:4200"
