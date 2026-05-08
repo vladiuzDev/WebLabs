@@ -1,6 +1,31 @@
 services:
+  postgres:
+    image: postgres:16
+    container_name: weblab-db
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "5432:5432"
+    volumes:
+      - weblab_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   web:
     build: .
-    container_name: weblab-fastapi
+    container_name: weblab-app
+    restart: unless-stopped
+    env_file:
+      - .env
     ports:
       - "4200:4200"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  weblab_postgres:
