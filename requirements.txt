@@ -1,2 +1,7 @@
+alembic
 fastapi
+psycopg2-binary
+pydantic
+python-dotenv
+sqlalchemy
 uvicorn
