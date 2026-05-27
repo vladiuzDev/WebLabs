@@ -1,130 +1,65 @@
-# WebLab: ЛР2 REST API (FastAPI + PostgreSQL)
+# WebLab: ЛР3 — Авторизация и аутентификация (JWT, OAuth2, Cookies)
 
-Продолжение ЛР1: реализован REST API с PostgreSQL, ORM, миграциями, soft delete и пагинацией.
+## Описание
+REST API на FastAPI с системой авторизации через JWT токены и OAuth2 (Яндекс ID).
+Продолжение ЛР2 — все endpoints `/items` защищены авторизацией.
 
 ## Стек
-
 - FastAPI
-- SQLAlchemy
-- Alembic
-- PostgreSQL 16+
-- Docker / Docker Compose
+- SQLAlchemy + Alembic
+- PostgreSQL
+- bcrypt (хеширование паролей)
+- python-jose (JWT)
+- httpx (OAuth запросы)
+- Docker + Docker Compose
 
-## Переменные окружения
-
-Скопируйте пример и при необходимости измените значения:
-
+## Запуск
 ```bash
 cp .env.example .env
-```
-
-Пример `.env`:
-
-```env
-DB_HOST=postgres
-DB_PORT=5432
-DB_USER=student
-DB_PASSWORD=student_secure_password
-DB_NAME=wp_labs
-PORT=4200
-```
-
-## Запуск через Docker (рекомендуется)
-
-```bash
+# заполни .env своими значениями
 docker compose up --build
 ```
 
-При старте контейнера приложения автоматически выполняется:
+## Endpoints
 
-```bash
-alembic upgrade head
+### Auth
+| Метод | URI | Описание |
+|---|---|---|
+| POST | /auth/register | Регистрация |
+| POST | /auth/login | Вход |
+| POST | /auth/refresh | Обновление токенов |
+| GET | /auth/whoami | Текущий пользователь |
+| POST | /auth/logout | Выход |
+| POST | /auth/logout-all | Выход со всех устройств |
+| GET | /auth/oauth/yandex | Вход через Яндекс |
+| POST | /auth/forgot-password | Запрос сброса пароля |
+| POST | /auth/reset-password | Сброс пароля |
+
+### Items (требуется авторизация)
+| Метод | URI | Описание |
+|---|---|---|
+| GET | /items | Список items |
+| POST | /items | Создать item |
+| GET | /items/{id} | Получить item |
+| PUT | /items/{id} | Обновить item |
+| PATCH | /items/{id} | Частично обновить item |
+| DELETE | /items/{id} | Удалить item |
+
+## .env.example
 ```
+DB_HOST=postgres
+DB_PORT=5432
+DB_USER=student
+DB_PASSWORD=your_password
+DB_NAME=wp_labs
+PORT=4200
 
-Остановка:
+JWT_ACCESS_SECRET=your_access_secret
+JWT_REFRESH_SECRET=your_refresh_secret
+JWT_ACCESS_EXPIRATION=15m
+JWT_REFRESH_EXPIRATION=7d
 
-```bash
-docker compose down
-```
-
-## Запуск локально (без Docker)
-
-1. Установить зависимости:
-
-```bash
-pip install -r requirements.txt
-```
-
-2. Поднять PostgreSQL и настроить `.env`.
-
-3. Применить миграции:
-
-```bash
-alembic upgrade head
-```
-
-4. Запустить API:
-
-```bash
-uvicorn app:app --host 0.0.0.0 --port 4200
-```
-
-## API
-
-### Служебный endpoint из ЛР1
-
-- `GET /info` — количество дней до Нового года.
-
-### Ресурс `items`
-
-- `GET /items?page=1&limit=10` — список активных элементов с пагинацией (`200`)
-- `GET /items/{id}` — активный элемент по id (`200`)
-- `POST /items` — создать элемент (`201`)
-- `PUT /items/{id}` — полное обновление (`200`)
-- `PATCH /items/{id}` — частичное обновление (`200`)
-- `DELETE /items/{id}` — мягкое удаление (`204`)
-
-`DELETE` выполняет только soft delete (заполняется `deleted_at`).
-Удаленные записи не возвращаются в `GET /items` и `GET /items/{id}`.
-
-### Пагинация
-
-Параметры:
-- `page` (по умолчанию `1`, должно быть `> 0`)
-- `limit` (по умолчанию `10`, диапазон `1..100`)
-
-Формат ответа списка:
-
-```json
-{
-  "data": [],
-  "meta": {
-    "total": 0,
-    "page": 1,
-    "limit": 10,
-    "totalPages": 0
-  }
-}
-```
-
-## Примеры запросов (cURL / Postman)
-
-Создание:
-
-```bash
-curl.exe -X POST "http://localhost:4200/items" ^
-  -H "Content-Type: application/json" ^
-  -d "{\"name\":\"Item 1\",\"description\":\"Test item\",\"status\":\"active\"}"
-```
-
-Список:
-
-```bash
-curl.exe -X GET "http://localhost:4200/items?page=1&limit=5"
-```
-
-Удаление:
-
-```bash
-curl.exe -X DELETE "http://localhost:4200/items/<ITEM_ID>"
+CLIENT_ID=your_yandex_client_id
+CLIENT_SECRET=your_yandex_client_secret
+CALLBACK_URL=http://localhost:4200/auth/oauth/yandex/callback
 ```
