@@ -17,28 +17,6 @@ from src.models.password_reset import PasswordReset  # noqa: F401
 APP_ENV = os.getenv("APP_ENV", "development")
 _is_dev = APP_ENV != "production"
 
-_DESCRIPTION = """
-## WebLab REST API — Labs 2–4
-
-A fully-featured REST API built with **FastAPI** and **PostgreSQL**.
-
-### Features
-- **Items CRUD** — create, read, update (full & partial), soft-delete, paginate
-- **JWT authentication** — cookie-based HttpOnly tokens (access 15 min / refresh 7 days)
-- **OAuth2** — Yandex ID Authorization Code flow
-- **Password reset** — single-use time-limited tokens
-- **OpenAPI documentation** — auto-generated (available in `development` only)
-
-### Authentication
-The API uses **HttpOnly cookies** for authentication.
-After a successful `/auth/login` the browser automatically sends cookies with every request,
-including requests made from this Swagger UI (same origin).
-
-To test protected endpoints manually:
-1. Call **POST /auth/login** — cookies are set automatically in the browser.
-2. Or copy the raw JWT value from the cookie and click the **🔒 Authorize** button above to use Bearer auth.
-"""
-
 tags_metadata = [
     {
         "name": "Auth",
@@ -59,7 +37,6 @@ tags_metadata = [
 app = FastAPI(
     title="WebLab API",
     version="4.0.0",
-    description=_DESCRIPTION,
     openapi_tags=tags_metadata,
     docs_url="/api/docs" if _is_dev else None,
     redoc_url="/api/redoc" if _is_dev else None,
