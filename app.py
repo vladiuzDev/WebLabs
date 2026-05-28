@@ -17,6 +17,28 @@ from src.models.password_reset import PasswordReset  # noqa: F401
 APP_ENV = os.getenv("APP_ENV", "development")
 _is_dev = APP_ENV != "production"
 
+_DESCRIPTION = """
+## WebLab REST API — Лабораторные работы 2–4
+
+REST API на базе **FastAPI** и **PostgreSQL**.
+
+### Возможности
+- **CRUD для items** — создание, чтение, обновление (полное и частичное), мягкое удаление, пагинация
+- **JWT аутентификация** — токены в HttpOnly cookies (access 15 мин / refresh 7 дней)
+- **OAuth2** — авторизация через Yandex ID (Authorization Code flow)
+- **Сброс пароля** — одноразовые токены с ограниченным сроком действия
+- **OpenAPI документация** — генерируется автоматически из кода (доступна только в режиме `development`)
+
+### Аутентификация
+API использует **HttpOnly cookies** для хранения токенов.
+После успешного `/auth/login` браузер автоматически отправляет cookies с каждым запросом,
+в том числе из этого интерфейса Swagger UI (одинаковый origin).
+
+Для ручного тестирования защищённых эндпоинтов:
+1. Вызовите **POST /auth/login** — cookies установятся автоматически в браузере.
+2. Или скопируйте значение JWT из cookie и нажмите кнопку **🔒 Authorize** выше, чтобы использовать Bearer-аутентификацию.
+"""
+
 tags_metadata = [
     {
         "name": "Auth",
@@ -37,6 +59,7 @@ tags_metadata = [
 app = FastAPI(
     title="WebLab API",
     version="4.0.0",
+    description=_DESCRIPTION,
     openapi_tags=tags_metadata,
     docs_url="/api/docs" if _is_dev else None,
     redoc_url="/api/redoc" if _is_dev else None,
