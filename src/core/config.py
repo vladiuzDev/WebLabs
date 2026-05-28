@@ -26,3 +26,5 @@ JWT_REFRESH_SECRET = get_env("JWT_REFRESH_SECRET")
 CLIENT_ID = get_env("CLIENT_ID")
 CLIENT_SECRET = get_env("CLIENT_SECRET")
 CALLBACK_URL = get_env("CALLBACK_URL")
+
+APP_ENV = get_env("APP_ENV", "development")
