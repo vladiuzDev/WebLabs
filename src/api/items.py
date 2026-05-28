@@ -119,7 +119,7 @@ def get_item(
     current_user: User = Depends(get_current_user),
 ) -> ItemRead:
     service = ItemService(db)
-    return service.get_active_by_id(item_id)
+    return service.get_by_id_cached(item_id)
 
 
 @router.post(

@@ -28,3 +28,9 @@ CLIENT_SECRET = get_env("CLIENT_SECRET")
 CALLBACK_URL = get_env("CALLBACK_URL")
 
 APP_ENV = get_env("APP_ENV", "development")
+
+REDIS_HOST = get_env("REDIS_HOST", "localhost")
+REDIS_PORT = int(get_env("REDIS_PORT", "6379"))
+REDIS_PASSWORD = get_env("REDIS_PASSWORD", "")
+CACHE_TTL_DEFAULT = int(get_env("CACHE_TTL_DEFAULT", "300"))
+ACCESS_TOKEN_EXPIRE_SECONDS = 15 * 60

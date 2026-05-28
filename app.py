@@ -58,7 +58,7 @@ tags_metadata = [
 
 app = FastAPI(
     title="WebLab API",
-    version="4.0.0",
+    version="5.0.0",
     description=_DESCRIPTION,
     openapi_tags=tags_metadata,
     docs_url="/api/docs" if _is_dev else None,

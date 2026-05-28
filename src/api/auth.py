@@ -6,7 +6,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-from src.core.config import CLIENT_ID, CALLBACK_URL, JWT_REFRESH_SECRET
+from src.core.config import CLIENT_ID, CALLBACK_URL, JWT_ACCESS_SECRET, JWT_REFRESH_SECRET
 from src.core.database import get_db
 from src.core.middleware import bearer_scheme, get_current_user
 from src.models.password_reset import PasswordReset
@@ -21,6 +21,7 @@ from src.services.auth import (
     hash_token,
     verify_password,
 )
+from src.services.cache import cache, make_key
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -177,6 +178,12 @@ def refresh(response: Response, refresh_token: str | None = Cookie(default=None)
     },
 )
 def whoami(current_user: User = Depends(get_current_user)):
+    cache_key = make_key("users", "profile", str(current_user.id))
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return UserResponse.model_validate(cached)
+    user_data = UserResponse.model_validate(current_user).model_dump(mode="json")
+    cache.set(cache_key, user_data)
     return current_user
 
 
@@ -199,10 +206,22 @@ def logout(
 ):
     token = access_token or (credentials.credentials if credentials else None)
     if token:
+        # Revoke in DB
         db_token = db.query(Token).filter(Token.token_hash == hash_token(token)).first()
         if db_token:
             db_token.is_revoked = True
             db.commit()
+        # Revoke JTI in Redis + invalidate profile cache
+        try:
+            payload = decode_token(token, JWT_ACCESS_SECRET)
+            user_id = payload.get("sub")
+            jti = payload.get("jti")
+            if user_id and jti:
+                cache.delete(make_key("auth", "user", user_id, "access", jti))
+            if user_id:
+                cache.delete(make_key("users", "profile", user_id))
+        except Exception:
+            pass
     response.delete_cookie("access_token")
     response.delete_cookie("refresh_token")
     return {"detail": "Logged out"}
@@ -230,6 +249,10 @@ def logout_all(
 ):
     db.query(Token).filter(Token.user_id == current_user.id, Token.is_revoked == False).update({"is_revoked": True})
     db.commit()
+    # Revoke all access JTIs for this user in Redis
+    cache.delete_by_pattern(make_key("auth", "user", str(current_user.id), "access", "*"))
+    # Invalidate profile cache
+    cache.delete(make_key("users", "profile", str(current_user.id)))
     response.delete_cookie("access_token")
     response.delete_cookie("refresh_token")
     return {"detail": "All sessions terminated"}
