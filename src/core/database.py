@@ -1,22 +1,17 @@
-from collections.abc import Generator
+from beanie import init_beanie
+from motor.motor_asyncio import AsyncIOMotorClient
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
-
-from src.core.config import DATABASE_URL
+from src.core.config import DB_NAME, MONGO_URI
 
 
-class Base(DeclarativeBase):
-    pass
+async def init_db() -> None:
+    from src.models.item import Item
+    from src.models.password_reset import PasswordReset
+    from src.models.token import Token
+    from src.models.user import User
 
-
-engine = create_engine(DATABASE_URL, future=True)
-SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False, class_=Session)
-
-
-def get_db() -> Generator[Session, None, None]:
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    client = AsyncIOMotorClient(MONGO_URI)
+    await init_beanie(
+        database=client[DB_NAME],
+        document_models=[User, Item, Token, PasswordReset],
+    )

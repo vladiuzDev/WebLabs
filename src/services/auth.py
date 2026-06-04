@@ -5,7 +5,6 @@ from datetime import datetime, timedelta, timezone
 import bcrypt
 import httpx
 from jose import jwt
-from sqlalchemy.orm import Session
 
 from src.core.config import (
     ACCESS_TOKEN_EXPIRE_SECONDS,
@@ -15,7 +14,6 @@ from src.core.config import (
     JWT_REFRESH_SECRET,
 )
 from src.models.token import Token
-from src.models.user import User
 from src.services.cache import cache, make_key
 
 
@@ -44,7 +42,7 @@ def create_jwt(data: dict, secret: str, expires_delta: timedelta) -> str:
     return jwt.encode(to_encode, secret, algorithm="HS256")
 
 
-def create_token_pair(user_id: uuid.UUID, db: Session) -> tuple[str, str]:
+async def create_token_pair(user_id: uuid.UUID) -> tuple[str, str]:
     jti = str(uuid.uuid4())
 
     access_token = create_jwt(
@@ -58,19 +56,18 @@ def create_token_pair(user_id: uuid.UUID, db: Session) -> tuple[str, str]:
         timedelta(days=7),
     )
 
-    db.add(Token(
+    await Token(
         user_id=user_id,
         token_hash=hash_token(access_token),
         token_type="access",
         expires_at=datetime.now(timezone.utc) + timedelta(seconds=ACCESS_TOKEN_EXPIRE_SECONDS),
-    ))
-    db.add(Token(
+    ).insert()
+    await Token(
         user_id=user_id,
         token_hash=hash_token(refresh_token),
         token_type="refresh",
         expires_at=datetime.now(timezone.utc) + timedelta(days=7),
-    ))
-    db.commit()
+    ).insert()
 
     # Store JTI in Redis: wp:auth:user:{userId}:access:{jti}
     redis_key = make_key("auth", "user", str(user_id), "access", jti)

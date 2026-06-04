@@ -6,27 +6,24 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 
-from src.api.items import router as items_router
 from src.api.auth import router as auth_router
-from src.core.database import Base, engine
-from src.models.item import Item  # noqa: F401
-from src.models.user import User  # noqa: F401
-from src.models.token import Token  # noqa: F401
-from src.models.password_reset import PasswordReset  # noqa: F401
+from src.api.items import router as items_router
+from src.core.database import init_db
 
 APP_ENV = os.getenv("APP_ENV", "development")
 _is_dev = APP_ENV != "production"
 
 _DESCRIPTION = """
-## WebLab REST API — Лабораторные работы 2–4
+## WebLab REST API — Лабораторные работы 2–6
 
-REST API на базе **FastAPI** и **PostgreSQL**.
+REST API на базе **FastAPI** и **MongoDB** (Beanie ODM).
 
 ### Возможности
 - **CRUD для items** — создание, чтение, обновление (полное и частичное), мягкое удаление, пагинация
 - **JWT аутентификация** — токены в HttpOnly cookies (access 15 мин / refresh 7 дней)
 - **OAuth2** — авторизация через Yandex ID (Authorization Code flow)
 - **Сброс пароля** — одноразовые токены с ограниченным сроком действия
+- **Redis кеширование** — cache-aside для items, инвалидация при изменениях
 - **OpenAPI документация** — генерируется автоматически из кода (доступна только в режиме `development`)
 
 ### Аутентификация
@@ -58,7 +55,7 @@ tags_metadata = [
 
 app = FastAPI(
     title="WebLab API",
-    version="5.0.0",
+    version="6.0.0",
     description=_DESCRIPTION,
     openapi_tags=tags_metadata,
     docs_url="/api/docs" if _is_dev else None,
@@ -85,8 +82,6 @@ if _is_dev:
 
         schemes = schema.setdefault("components", {}).setdefault("securitySchemes", {})
 
-        # bearerAuth is auto-added by FastAPI via HTTPBearer Security() dep,
-        # but we enrich its description here.
         schemes["bearerAuth"] = {
             "type": "http",
             "scheme": "bearer",
@@ -99,7 +94,6 @@ if _is_dev:
             ),
         }
 
-        # Cookie-based auth — informational; browsers send cookies automatically.
         schemes["cookieAuth"] = {
             "type": "apiKey",
             "in": "cookie",
@@ -111,7 +105,6 @@ if _is_dev:
             ),
         }
 
-        # OAuth2 Yandex — documents the Authorization Code flow.
         schemes["oauth2Yandex"] = {
             "type": "oauth2",
             "description": "Yandex ID OAuth2 Authorization Code flow (initiated via GET /auth/oauth/yandex).",
@@ -141,8 +134,8 @@ async def generic_exception_handler(_, __: Exception) -> JSONResponse:
 
 
 @app.on_event("startup")
-def startup() -> None:
-    Base.metadata.create_all(bind=engine)
+async def startup() -> None:
+    await init_db()
 
 
 def days_before_new_year(today: date | None = None) -> int:

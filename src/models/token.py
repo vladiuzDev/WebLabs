@@ -1,17 +1,18 @@
 import uuid
-from datetime import datetime
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, func
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
-from src.core.database import Base
+from datetime import datetime, timezone
 
-class Token(Base):
-    __tablename__ = "tokens"
+from beanie import Document
+from pydantic import Field
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    token_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    token_type: Mapped[str] = mapped_column(String(16), nullable=False)  # "access" или "refresh"
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    is_revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+class Token(Document):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4)
+    user_id: uuid.UUID
+    token_hash: str
+    token_type: str  # "access" or "refresh"
+    expires_at: datetime
+    is_revoked: bool = False
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    class Settings:
+        name = "tokens"

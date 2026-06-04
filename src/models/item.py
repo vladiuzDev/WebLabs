@@ -1,22 +1,19 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Annotated
 
-from sqlalchemy import DateTime, String, Text, func
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
-
-from src.core.database import Base
+from beanie import Document, Indexed
+from pydantic import Field
 
 
-class Item(Base):
-    __tablename__ = "items"
+class Item(Document):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4)
+    name: Annotated[str, Indexed(unique=True)]
+    description: str
+    status: str = "active"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    deleted_at: datetime | None = None
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name: Mapped[str] = mapped_column(String(120), nullable=False, unique=True, index=True)
-    description: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
-    )
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    class Settings:
+        name = "items"

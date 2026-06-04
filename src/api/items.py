@@ -1,9 +1,7 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response, status
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Query, Response, Security, status
 
-from src.core.database import get_db
 from src.core.middleware import get_current_user
 from src.models.user import User
 from src.schemas.item import (
@@ -75,15 +73,14 @@ _409 = {
         401: _401,
     },
 )
-def list_items(
+async def list_items(
     page: int = Query(default=1, ge=1, description="Page number (starts from 1)"),
     limit: int = Query(default=10, ge=1, le=100, description="Number of items per page (1–100)"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Security(get_current_user),
 ) -> ItemListResponse:
     params = PaginationQuery(page=page, limit=limit)
-    service = ItemService(db)
-    data, meta = service.list(page=params.page, limit=params.limit)
+    service = ItemService()
+    data, meta = await service.list(page=params.page, limit=params.limit)
     return ItemListResponse(data=data, meta=meta)
 
 
@@ -113,13 +110,12 @@ def list_items(
         404: _404,
     },
 )
-def get_item(
+async def get_item(
     item_id: UUID,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Security(get_current_user),
 ) -> ItemRead:
-    service = ItemService(db)
-    return service.get_by_id_cached(item_id)
+    service = ItemService()
+    return await service.get_by_id_cached(item_id)
 
 
 @router.post(
@@ -149,13 +145,12 @@ def get_item(
         409: _409,
     },
 )
-def create_item(
+async def create_item(
     payload: ItemCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Security(get_current_user),
 ) -> ItemRead:
-    service = ItemService(db)
-    return service.create(payload)
+    service = ItemService()
+    return await service.create(payload)
 
 
 @router.put(
@@ -189,14 +184,13 @@ def create_item(
         409: _409,
     },
 )
-def put_item(
+async def put_item(
     item_id: UUID,
     payload: ItemPut,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Security(get_current_user),
 ) -> ItemRead:
-    service = ItemService(db)
-    return service.put(item_id=item_id, payload=payload)
+    service = ItemService()
+    return await service.put(item_id=item_id, payload=payload)
 
 
 @router.patch(
@@ -231,14 +225,13 @@ def put_item(
         409: _409,
     },
 )
-def patch_item(
+async def patch_item(
     item_id: UUID,
     payload: ItemPatch,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Security(get_current_user),
 ) -> ItemRead:
-    service = ItemService(db)
-    return service.patch(item_id=item_id, payload=payload)
+    service = ItemService()
+    return await service.patch(item_id=item_id, payload=payload)
 
 
 @router.delete(
@@ -256,11 +249,10 @@ def patch_item(
         404: _404,
     },
 )
-def delete_item(
+async def delete_item(
     item_id: UUID,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Security(get_current_user),
 ) -> Response:
-    service = ItemService(db)
-    service.soft_delete(item_id=item_id)
+    service = ItemService()
+    await service.soft_delete(item_id=item_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -9,4 +9,4 @@ COPY . .
 
 EXPOSE 4200
 
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app:app --host 0.0.0.0 --port 4200"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "4200"]

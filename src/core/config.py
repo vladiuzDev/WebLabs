@@ -12,15 +12,9 @@ def get_env(name: str, default: str | None = None) -> str:
     return value
 
 
-DB_HOST = get_env("DB_HOST", "localhost")
-DB_PORT = int(get_env("DB_PORT", "5432"))
-DB_USER = get_env("DB_USER", "student")
-DB_PASSWORD = get_env("DB_PASSWORD", "student_secure_password")
+MONGO_URI = get_env("MONGO_URI")
 DB_NAME = get_env("DB_NAME", "wp_labs")
 
-DATABASE_URL = (
-    f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-)
 JWT_ACCESS_SECRET = get_env("JWT_ACCESS_SECRET")
 JWT_REFRESH_SECRET = get_env("JWT_REFRESH_SECRET")
 CLIENT_ID = get_env("CLIENT_ID")

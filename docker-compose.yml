@@ -1,20 +1,19 @@
 services:
-  postgres:
-    image: postgres:16
+  mongo:
+    image: mongo:6
     container_name: weblab-db
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
+      MONGO_INITDB_ROOT_USERNAME: ${DB_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "27017:27017"
     volumes:
-      - weblab_postgres:/var/lib/postgresql/data
+      - weblab_mongo:/data/db
     networks:
       - weblab_network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -47,13 +46,13 @@ services:
     networks:
       - weblab_network
     depends_on:
-      postgres:
+      mongo:
         condition: service_healthy
       redis:
         condition: service_healthy
 
 volumes:
-  weblab_postgres:
+  weblab_mongo:
   weblab_redis:
 
 networks:
