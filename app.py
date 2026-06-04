@@ -19,8 +19,7 @@ app.include_router(auth_router)
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(_, exc: RequestValidationError) -> JSONResponse:
-    return JSONResponse(status_code=400, content={"detail": exc.errors()})
-
+    return JSONResponse(status_code=400, content={"detail": str(exc.errors())})
 
 @app.exception_handler(Exception)
 async def generic_exception_handler(_, __: Exception) -> JSONResponse:
