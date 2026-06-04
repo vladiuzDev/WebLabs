@@ -246,9 +246,8 @@ def logout_all(
         302: {"description": "Redirect to Yandex OAuth authorization endpoint"},
     },
 )
-def yandex_login(response: Response):
+def yandex_login():
     state = secrets.token_urlsafe(16)
-    response.set_cookie("oauth_state", state, httponly=True, samesite="lax")
     url = (
         f"https://oauth.yandex.ru/authorize"
         f"?response_type=code"
@@ -256,8 +255,9 @@ def yandex_login(response: Response):
         f"&redirect_uri={CALLBACK_URL}"
         f"&state={state}"
     )
-    return RedirectResponse(url)
-
+    redirect = RedirectResponse(url)
+    redirect.set_cookie("oauth_state", state, httponly=True, samesite="lax")
+    return redirect
 
 @router.get(
     "/oauth/yandex/callback",
