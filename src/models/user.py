@@ -14,6 +14,9 @@ class User(Document):
     yandex_id: str | None = None
     first_name: str | None = None
     last_name: str | None = None
+    display_name: str | None = None
+    bio: str | None = None
+    avatar_file_id: uuid.UUID | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     deleted_at: datetime | None = None

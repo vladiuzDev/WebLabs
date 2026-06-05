@@ -7,33 +7,37 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 
 from src.api.auth import router as auth_router
+from src.api.files import router as files_router
 from src.api.items import router as items_router
+from src.api.profile import router as profile_router
 from src.core.database import init_db
+from src.services.storage import storage
 
 APP_ENV = os.getenv("APP_ENV", "development")
 _is_dev = APP_ENV != "production"
 
 _DESCRIPTION = """
-## WebLab REST API — Лабораторные работы 2–6
+## WebLab REST API — Лабораторные работы 2–7
 
-REST API на базе **FastAPI** и **MongoDB** (Beanie ODM).
+REST API на базе **FastAPI**, **MongoDB** (Beanie ODM) и **MinIO** (Object Storage).
 
 ### Возможности
-- **CRUD для items** — создание, чтение, обновление (полное и частичное), мягкое удаление, пагинация
+- **CRUD для items** — создание, чтение, обновление, мягкое удаление, пагинация
 - **JWT аутентификация** — токены в HttpOnly cookies (access 15 мин / refresh 7 дней)
 - **OAuth2** — авторизация через Yandex ID (Authorization Code flow)
 - **Сброс пароля** — одноразовые токены с ограниченным сроком действия
-- **Redis кеширование** — cache-aside для items, инвалидация при изменениях
-- **OpenAPI документация** — генерируется автоматически из кода (доступна только в режиме `development`)
+- **Redis кеширование** — cache-aside для items, файлов и профиля
+- **Хранение файлов** — загрузка/скачивание через MinIO (потоковая обработка)
+- **Профиль пользователя** — обновление данных и установка аватара
+- **OpenAPI документация** — доступна только в режиме `development`
 
 ### Аутентификация
 API использует **HttpOnly cookies** для хранения токенов.
-После успешного `/auth/login` браузер автоматически отправляет cookies с каждым запросом,
-в том числе из этого интерфейса Swagger UI (одинаковый origin).
+После успешного `/auth/login` браузер автоматически отправляет cookies с каждым запросом.
 
 Для ручного тестирования защищённых эндпоинтов:
-1. Вызовите **POST /auth/login** — cookies установятся автоматически в браузере.
-2. Или скопируйте значение JWT из cookie и нажмите кнопку **🔒 Authorize** выше, чтобы использовать Bearer-аутентификацию.
+1. Вызовите **POST /auth/login** — cookies установятся автоматически.
+2. Или скопируйте JWT из cookie и нажмите **🔒 Authorize** (Bearer).
 """
 
 tags_metadata = [
@@ -48,14 +52,29 @@ tags_metadata = [
         "name": "Items",
         "description": (
             "Full CRUD for items with soft-delete and pagination. "
-            "All endpoints require authentication (cookie or Bearer token)."
+            "All endpoints require authentication."
+        ),
+    },
+    {
+        "name": "Files",
+        "description": (
+            "File upload, download and deletion via MinIO object storage. "
+            "Files are streamed — not buffered in memory. "
+            "Users can only access their own files."
+        ),
+    },
+    {
+        "name": "Profile",
+        "description": (
+            "Get and update the current user profile, including avatar. "
+            "To set an avatar: upload an image via **POST /files**, then pass the `id` to **POST /profile**."
         ),
     },
 ]
 
 app = FastAPI(
     title="WebLab API",
-    version="6.0.0",
+    version="7.0.0",
     description=_DESCRIPTION,
     openapi_tags=tags_metadata,
     docs_url="/api/docs" if _is_dev else None,
@@ -65,6 +84,8 @@ app = FastAPI(
 
 app.include_router(auth_router)
 app.include_router(items_router)
+app.include_router(files_router)
+app.include_router(profile_router)
 
 
 if _is_dev:
@@ -88,26 +109,18 @@ if _is_dev:
             "bearerFormat": "JWT",
             "description": (
                 "Paste a raw JWT access token obtained from the `access_token` cookie "
-                "after calling **POST /auth/login**. "
-                "Click **Authorize**, enter the token value (without 'Bearer ' prefix), "
-                "and all protected endpoints will include the header automatically."
+                "after calling **POST /auth/login**."
             ),
         }
-
         schemes["cookieAuth"] = {
             "type": "apiKey",
             "in": "cookie",
             "name": "access_token",
-            "description": (
-                "JWT access token stored in an **HttpOnly cookie**. "
-                "The browser sends it automatically after `/auth/login`. "
-                "This scheme is informational — use Bearer auth for manual Swagger UI testing."
-            ),
+            "description": "JWT access token stored in an HttpOnly cookie.",
         }
-
         schemes["oauth2Yandex"] = {
             "type": "oauth2",
-            "description": "Yandex ID OAuth2 Authorization Code flow (initiated via GET /auth/oauth/yandex).",
+            "description": "Yandex ID OAuth2 Authorization Code flow.",
             "flows": {
                 "authorizationCode": {
                     "authorizationUrl": "https://oauth.yandex.ru/authorize",
@@ -136,6 +149,7 @@ async def generic_exception_handler(_, __: Exception) -> JSONResponse:
 @app.on_event("startup")
 async def startup() -> None:
     await init_db()
+    storage.ensure_bucket()
 
 
 def days_before_new_year(today: date | None = None) -> int:

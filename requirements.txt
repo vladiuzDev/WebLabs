@@ -11,3 +11,5 @@ httpx==0.28.1
 passlib==1.7.4
 python-jose==3.5.0
 redis==5.0.8
+minio==7.2.9
+python-multipart==0.0.9
