@@ -5,13 +5,17 @@ from beanie import Document
 from pydantic import Field
 
 
-class PasswordReset(Document):
+class File(Document):
     id: uuid.UUID = Field(default_factory=uuid.uuid4)
     user_id: uuid.UUID
-    token_hash: str
-    expires_at: datetime
-    is_used: bool = False
+    original_name: str
+    object_key: str
+    size: int
+    mimetype: str
+    bucket: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    deleted_at: datetime | None = None
 
     class Settings:
-        name = "password_resets"
+        name = "files"

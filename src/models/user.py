@@ -1,20 +1,29 @@
 import uuid
-from datetime import datetime
-from sqlalchemy import DateTime, String, func
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
-from src.core.database import Base
+from datetime import datetime, timezone
 
-class User(Base):
-    __tablename__ = "users"
+from beanie import Document
+from pydantic import Field
+from pymongo import ASCENDING, IndexModel
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    email: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True, index=True)
-    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    salt: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    yandex_id: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
-    first_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    last_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+class User(Document):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4)
+    email: str | None = None
+    password_hash: str | None = None
+    salt: str | None = None
+    yandex_id: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    display_name: str | None = None
+    bio: str | None = None
+    avatar_file_id: uuid.UUID | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    deleted_at: datetime | None = None
+
+    class Settings:
+        name = "users"
+        indexes = [
+            IndexModel([("email", ASCENDING)], unique=True, sparse=True),
+            IndexModel([("yandex_id", ASCENDING)], unique=True, sparse=True),
+        ]

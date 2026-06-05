@@ -1,18 +1,17 @@
 import secrets
+import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, Security, status
+from fastapi import APIRouter, Cookie, HTTPException, Response, Security, status
 from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy.orm import Session
 
-from src.core.config import CLIENT_ID, CALLBACK_URL, JWT_REFRESH_SECRET
-from src.core.database import get_db
+from src.core.config import CALLBACK_URL, CLIENT_ID, JWT_ACCESS_SECRET, JWT_REFRESH_SECRET
 from src.core.middleware import bearer_scheme, get_current_user
 from src.models.password_reset import PasswordReset
 from src.models.token import Token
 from src.models.user import User
-from src.schemas.auth import LoginRequest, RegisterRequest, UserResponse, ForgotPasswordRequest, ResetPasswordRequest
+from src.schemas.auth import ForgotPasswordRequest, LoginRequest, RegisterRequest, ResetPasswordRequest, UserResponse
 from src.services.auth import (
     create_token_pair,
     decode_token,
@@ -21,6 +20,7 @@ from src.services.auth import (
     hash_token,
     verify_password,
 )
+from src.services.cache import cache, make_key
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -62,16 +62,14 @@ _409 = {
         409: _409,
     },
 )
-def register(body: RegisterRequest, db: Session = Depends(get_db)):
-    existing = db.query(User).filter(User.email == body.email).first()
+async def register(body: RegisterRequest):
+    existing = await User.find_one(User.email == body.email)
     if existing:
         raise HTTPException(status_code=409, detail="Email already registered")
 
     password_hash, salt = hash_password(body.password)
     user = User(email=body.email, password_hash=password_hash, salt=salt)
-    db.add(user)
-    db.commit()
-    db.refresh(user)
+    await user.insert()
     return user
 
 
@@ -96,12 +94,12 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
         400: _400,
     },
 )
-def login(body: LoginRequest, response: Response, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == body.email, User.deleted_at == None).first()
+async def login(body: LoginRequest, response: Response):
+    user = await User.find_one(User.email == body.email, User.deleted_at == None)
     if not user or not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    access_token, refresh_token = create_token_pair(user.id, db)
+    access_token, refresh_token = await create_token_pair(user.id)
     response.set_cookie("access_token", access_token, httponly=True, samesite="lax")
     response.set_cookie("refresh_token", refresh_token, httponly=True, samesite="lax")
     return {"detail": "Logged in"}
@@ -125,7 +123,7 @@ def login(body: LoginRequest, response: Response, db: Session = Depends(get_db))
         },
     },
 )
-def refresh(response: Response, refresh_token: str | None = Cookie(default=None), db: Session = Depends(get_db)):
+async def refresh(response: Response, refresh_token: str | None = Cookie(default=None)):
     if not refresh_token:
         raise HTTPException(status_code=401, detail="No refresh token")
 
@@ -135,17 +133,17 @@ def refresh(response: Response, refresh_token: str | None = Cookie(default=None)
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
-    token = db.query(Token).filter(
+    token = await Token.find_one(
         Token.token_hash == hash_token(refresh_token),
         Token.is_revoked == False,
-    ).first()
+    )
     if not token:
         raise HTTPException(status_code=401, detail="Token revoked")
 
     token.is_revoked = True
-    db.commit()
+    await token.save()
 
-    access_token, new_refresh_token = create_token_pair(user_id, db)
+    access_token, new_refresh_token = await create_token_pair(uuid.UUID(user_id))
     response.set_cookie("access_token", access_token, httponly=True, samesite="lax")
     response.set_cookie("refresh_token", new_refresh_token, httponly=True, samesite="lax")
     return {"detail": "Tokens refreshed"}
@@ -176,7 +174,13 @@ def refresh(response: Response, refresh_token: str | None = Cookie(default=None)
         401: _401,
     },
 )
-def whoami(current_user: User = Depends(get_current_user)):
+async def whoami(current_user: User = Security(get_current_user)):
+    cache_key = make_key("users", "profile", str(current_user.id))
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return UserResponse.model_validate(cached)
+    user_data = UserResponse.model_validate(current_user).model_dump(mode="json")
+    cache.set(cache_key, user_data)
     return current_user
 
 
@@ -191,18 +195,27 @@ def whoami(current_user: User = Depends(get_current_user)):
         },
     },
 )
-def logout(
+async def logout(
     response: Response,
     credentials: HTTPAuthorizationCredentials | None = Security(bearer_scheme),
     access_token: str | None = Cookie(default=None),
-    db: Session = Depends(get_db),
 ):
     token = access_token or (credentials.credentials if credentials else None)
     if token:
-        db_token = db.query(Token).filter(Token.token_hash == hash_token(token)).first()
+        db_token = await Token.find_one(Token.token_hash == hash_token(token))
         if db_token:
             db_token.is_revoked = True
-            db.commit()
+            await db_token.save()
+        try:
+            payload = decode_token(token, JWT_ACCESS_SECRET)
+            user_id = payload.get("sub")
+            jti = payload.get("jti")
+            if user_id and jti:
+                cache.delete(make_key("auth", "user", user_id, "access", jti))
+            if user_id:
+                cache.delete(make_key("users", "profile", user_id))
+        except Exception:
+            pass
     response.delete_cookie("access_token")
     response.delete_cookie("refresh_token")
     return {"detail": "Logged out"}
@@ -223,13 +236,16 @@ def logout(
         401: _401,
     },
 )
-def logout_all(
+async def logout_all(
     response: Response,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    current_user: User = Security(get_current_user),
 ):
-    db.query(Token).filter(Token.user_id == current_user.id, Token.is_revoked == False).update({"is_revoked": True})
-    db.commit()
+    await Token.find(
+        Token.user_id == current_user.id,
+        Token.is_revoked == False,
+    ).update({"$set": {"is_revoked": True}})
+    cache.delete_by_pattern(make_key("auth", "user", str(current_user.id), "access", "*"))
+    cache.delete(make_key("users", "profile", str(current_user.id)))
     response.delete_cookie("access_token")
     response.delete_cookie("refresh_token")
     return {"detail": "All sessions terminated"}
@@ -246,7 +262,7 @@ def logout_all(
         302: {"description": "Redirect to Yandex OAuth authorization endpoint"},
     },
 )
-def yandex_login(response: Response):
+async def yandex_login(response: Response):
     state = secrets.token_urlsafe(16)
     response.set_cookie("oauth_state", state, httponly=True, samesite="lax")
     url = (
@@ -292,7 +308,6 @@ async def yandex_callback(
     code: str,
     state: str,
     response: Response,
-    db: Session = Depends(get_db),
     oauth_state: str | None = Cookie(default=None),
 ):
     if not oauth_state or oauth_state != state:
@@ -305,19 +320,18 @@ async def yandex_callback(
     first_name = yandex_data.get("first_name")
     last_name = yandex_data.get("last_name")
 
-    user = db.query(User).filter(User.yandex_id == yandex_id).first()
+    user = await User.find_one(User.yandex_id == yandex_id)
     if not user:
-        user = db.query(User).filter(User.email == email).first()
+        user = await User.find_one(User.email == email)
     if not user:
         user = User(yandex_id=yandex_id, email=email, first_name=first_name, last_name=last_name)
-        db.add(user)
-        db.commit()
-        db.refresh(user)
+        await user.insert()
     else:
         user.yandex_id = yandex_id
-        db.commit()
+        user.updated_at = datetime.now(timezone.utc)
+        await user.save()
 
-    access_token, refresh_token = create_token_pair(user.id, db)
+    access_token, refresh_token = await create_token_pair(user.id)
     response.set_cookie("access_token", access_token, httponly=True, samesite="none", secure=False)
     response.set_cookie("refresh_token", refresh_token, httponly=True, samesite="none", secure=False)
     response.delete_cookie("oauth_state")
@@ -357,8 +371,8 @@ async def yandex_callback(
         400: _400,
     },
 )
-def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == body.email, User.deleted_at == None).first()
+async def forgot_password(body: ForgotPasswordRequest):
+    user = await User.find_one(User.email == body.email, User.deleted_at == None)
     if not user:
         return {"detail": "If email exists, reset link was sent"}
 
@@ -368,8 +382,7 @@ def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
         token_hash=hash_token(token),
         expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
     )
-    db.add(reset)
-    db.commit()
+    await reset.insert()
 
     return {"detail": "Reset token generated", "reset_token": token}
 
@@ -392,21 +405,24 @@ def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
         },
     },
 )
-def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
-    reset = db.query(PasswordReset).filter(
+async def reset_password(body: ResetPasswordRequest):
+    reset = await PasswordReset.find_one(
         PasswordReset.token_hash == hash_token(body.token),
         PasswordReset.is_used == False,
         PasswordReset.expires_at > datetime.now(timezone.utc),
-    ).first()
+    )
 
     if not reset:
         raise HTTPException(status_code=400, detail="Invalid or expired token")
 
-    user = db.query(User).filter(User.id == reset.user_id).first()
+    user = await User.find_one(User.id == reset.user_id)
     password_hash, salt = hash_password(body.new_password)
     user.password_hash = password_hash
     user.salt = salt
+    user.updated_at = datetime.now(timezone.utc)
+    await user.save()
+
     reset.is_used = True
-    db.commit()
+    await reset.save()
 
     return {"detail": "Password updated"}
